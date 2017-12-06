@@ -83,139 +83,144 @@ class E57{
 	public:
         E57(){}
         ~E57(){}
-        inline int openE57(const std::string &filename, PtrXYZ &pointcloud, float &scale_factor, int64_t& scanCount, Eigen::Matrix4f& mat4, int64_t scanIndex = 0){
-			try{
-				ImageFile imf(filename, "r");
-			    StructureNode root = imf.root();
-				/// Make sure vector of scans is defined and of expected type.
-				/// If "/data3D" wasn't defined, the call to root.get below would raise an exception.
-				if (!root.isDefined("/data3D")) {
-					cout << "File doesn't contain 3D images."<<endl;
-					return 0;
-				}
-				Node n = root.get("/data3D");
-				if (n.type() != E57_VECTOR) {
-					cout <<"File Corrupted. Error during opening."<<endl;
-					return 0;
-				}
-				
-				/// The node is a vector so we can safely get a VectorNode handle to it.
-				/// If n was not a VectorNode, this would raise an exception.
-				VectorNode data3D(n);
-			
-				/// Print number of children of data3D.  This is the number of scans in file.
-				scanCount = data3D.childCount();
-				//~ 
-				
-				if(scanCount == 0 || scanIndex < 0 || scanIndex >= scanCount){
-					cout <<"File doesn't contain valid informations."<<endl;
-					return 0;
-				}
-				
-				/// Get scan from "/data3D", assume its a Structure (else get exception)
-				StructureNode scan(data3D.get(scanIndex));
-				std::cout << scan.elementName() << std::endl;
+        inline int openE57(const std::string &filename, PtrXYZ &pointcloud, float &scale_factor, int64_t& scanCount, int64_t scanIndex = 0)
+        {
+          try
+          {
+            ImageFile imf(filename, "r");
+            StructureNode root = imf.root();
+            /// Make sure vector of scans is defined and of expected type.
+            /// If "/data3D" wasn't defined, the call to root.get below would raise an exception.
+            if (!root.isDefined("/data3D")) {
+              cout << "File doesn't contain 3D images." << endl;
+              return 0;
+            }
+            Node n = root.get("/data3D");
+            if (n.type() != E57_VECTOR) {
+              cout << "File Corrupted. Error during opening." << endl;
+              return 0;
+            }
 
-				StructureNode pose(scan.get("pose"));
-				StructureNode rotation(pose.get("rotation"));
-				StructureNode translation(pose.get("translation"));
-				float rx = FloatNode(rotation.get("x")).value();
-				float ry = FloatNode(rotation.get("y")).value();
-				float rz = FloatNode(rotation.get("z")).value();
-				float rw = FloatNode(rotation.get("w")).value();
-				float tx = FloatNode(translation.get("x")).value();
-				float ty = FloatNode(translation.get("y")).value();
-				float tz = FloatNode(translation.get("z")).value();
-				std::cout << tx << " " << ty << " " << tz << " " << rx << " " << ry << " " << rz << " " << rw << std::endl;
+            /// The node is a vector so we can safely get a VectorNode handle to it.
+            /// If n was not a VectorNode, this would raise an exception.
+            VectorNode data3D(n);
 
-				Eigen::Matrix3f mat3 = Eigen::Quaternionf(rw, rx, ry, rz).toRotationMatrix();
-				mat4 = Eigen::Matrix4f::Identity();
-				mat4.block(0,0,3,3) = mat3;
-				mat4.block(0,3,3,1) = Eigen::Vector3f(tx, ty, tz);
+            /// Print number of children of data3D.  This is the number of scans in file.
+            scanCount = data3D.childCount();
+            //~ 
 
-				/// Get "points" field in scan.  Should be a CompressedVectorNode.
-				CompressedVectorNode points(scan.get("points"));
-				
-				cout<<"Points: "<<points.childCount()<<endl;
-				pointcloud->width = points.childCount();
-				pointcloud->height = 1;
-				pointcloud->is_dense = false;
-				pointcloud->resize(pointcloud->width * pointcloud->height);
-				/// Call subroutine in this file to print the points
-				StructureNode proto(points.prototype());
-			    /// The prototype should have a field named either "cartesianX" or "sphericalRange".
-                if (proto.isDefined("cartesianX") && proto.isDefined("cartesianY") && proto.isDefined("cartesianZ")) {
-			        /// Make a list of buffers to receive the xyz values.
-			        vector<SourceDestBuffer> destBuffers;
-					float *x = new float[points.childCount()];
-					float *y = new float[points.childCount()];
-                    float *z = new float[points.childCount()];
-                    destBuffers.push_back(SourceDestBuffer(imf, "cartesianX", x, points.childCount(), true));
-			        destBuffers.push_back(SourceDestBuffer(imf, "cartesianY", y, points.childCount(), true));
-			        destBuffers.push_back(SourceDestBuffer(imf, "cartesianZ", z, points.childCount(), true));
-                    //destBuffers.push_back(SourceDestBuffer(imf, "intensity", intensity, points.childCount(), true));
-			        /// Create a reader of the points CompressedVector, try to read first block of N points
-			        /// Each call to reader.read() will fill the xyz buffers until the points are exhausted.
-                    CompressedVectorReader reader = points.reader(destBuffers);
-                    if(reader.read() <= 0)
-                    {
-                        cout << "Failed to read E57 file" << endl;
-                        return -1;
-                    }
-			        float min_scale = 100;	//assigned an high value before starting.
-                    auto j = 0;
-                    for(auto &point:pointcloud->points){
-						
-                        point.x = x[j];	//seems E57 is expressed in millimeters
-                        point.y = y[j];	//seems E57 is expressed in millimeters
-                        point.z = z[j];	//seems E57 is expressed in millimeters
-						
-                        if(point.x > 10000 || point.y > 10000 || point.z > 10000)
-                        {
-                            point.x = point.x  * 0.001;
-                            point.y = point.y  * 0.001;
-                            point.z = point.z  * 0.001;
-                            if(min_scale > 0.001)
-                                min_scale = 0.001;
-						}
-                        if(point.x > 1000 || point.y > 1000 || point.z > 1000){
-                            point.x = point.x  * 0.01;
-                            point.y = point.y  * 0.01;
-                            point.z = point.z  * 0.01;
-							if(min_scale > 0.01)
-								min_scale = 0.01;
-						}
-                        else if(point.x > 100 || point.y > 100 || point.z > 100){
-                            point.x = point.x  * 0.1;
-                            point.y = point.y  * 0.1;
-                            point.z = point.z  * 0.1;
-							if(min_scale > 0.1)
-								min_scale = 0.1;
-						}
-                        else if(point.x > 10 || point.y > 10 || point.z > 10){
-                            point.x = point.x  * 1.0;
-                            point.y = point.y  * 1.0;
-                            point.z = point.z  * 1.0;
-							if(min_scale > 1.0)
-								min_scale = 1.0;
-						}
-                        j++;
-					}
-					scale_factor = min_scale;
-					reader.close();
-                    imf.close();
-					return 1;
-				}
-				else {
-					cout<<"Error during reading file."<<endl;
-				
-					return 0;
-				}
-				
-			} catch(E57Exception& ex){
-                cout << "Error during reading file: " << ex.what() << endl;
+            if (scanCount == 0 || scanIndex < 0 || scanIndex >= scanCount){
+              cout << "File doesn't contain valid informations." << endl;
+              return 0;
+            }
+
+            /// Get scan from "/data3D", assume its a Structure (else get exception)
+            StructureNode scan(data3D.get(scanIndex));
+            std::cout << scan.elementName() << std::endl;
+
+            StructureNode pose(scan.get("pose"));
+            StructureNode rotation(pose.get("rotation"));
+            StructureNode translation(pose.get("translation"));
+            float rx = FloatNode(rotation.get("x")).value();
+            float ry = FloatNode(rotation.get("y")).value();
+            float rz = FloatNode(rotation.get("z")).value();
+            float rw = FloatNode(rotation.get("w")).value();
+            float tx = FloatNode(translation.get("x")).value();
+            float ty = FloatNode(translation.get("y")).value();
+            float tz = FloatNode(translation.get("z")).value();
+            std::cout << tx << " " << ty << " " << tz << " " << rx << " " << ry << " " << rz << " " << rw << std::endl;
+            pointcloud->sensor_orientation_ = Eigen::Quaternionf(rw, rx, ry, rz);
+            pointcloud->sensor_origin_ = Eigen::Vector4f(tx, ty, tz, 0.);
+
+//            Eigen::Matrix3f mat3 = Eigen::Quaternionf(rw, rx, ry, rz).toRotationMatrix();
+//            mat4 = Eigen::Matrix4f::Identity();
+//            mat4.block(0, 0, 3, 3) = mat3;
+//            mat4.block(0, 3, 3, 1) = Eigen::Vector3f(tx, ty, tz);
+
+            /// Get "points" field in scan.  Should be a CompressedVectorNode.
+            CompressedVectorNode points(scan.get("points"));
+
+            cout << "Points: " << points.childCount() << endl;
+            pointcloud->width = points.childCount();
+            pointcloud->height = 1;
+            pointcloud->is_dense = false;
+            pointcloud->resize(pointcloud->width * pointcloud->height);
+            /// Call subroutine in this file to print the points
+            StructureNode proto(points.prototype());
+            /// The prototype should have a field named either "cartesianX" or "sphericalRange".
+            if (proto.isDefined("cartesianX") && proto.isDefined("cartesianY") && proto.isDefined("cartesianZ")) {
+              /// Make a list of buffers to receive the xyz values.
+              vector<SourceDestBuffer> destBuffers;
+              float *x = new float[points.childCount()];
+              float *y = new float[points.childCount()];
+              float *z = new float[points.childCount()];
+              destBuffers.push_back(SourceDestBuffer(imf, "cartesianX", x, points.childCount(), true));
+              destBuffers.push_back(SourceDestBuffer(imf, "cartesianY", y, points.childCount(), true));
+              destBuffers.push_back(SourceDestBuffer(imf, "cartesianZ", z, points.childCount(), true));
+              //destBuffers.push_back(SourceDestBuffer(imf, "intensity", intensity, points.childCount(), true));
+              /// Create a reader of the points CompressedVector, try to read first block of N points
+              /// Each call to reader.read() will fill the xyz buffers until the points are exhausted.
+              CompressedVectorReader reader = points.reader(destBuffers);
+              if (reader.read() <= 0)
+              {
+                cout << "Failed to read E57 file" << endl;
                 return -1;
-			}
+              }
+              float min_scale = 100;	//assigned an high value before starting.
+              auto j = 0;
+              for (auto &point : pointcloud->points){
+
+                point.x = x[j];	//seems E57 is expressed in millimeters
+                point.y = y[j];	//seems E57 is expressed in millimeters
+                point.z = z[j];	//seems E57 is expressed in millimeters
+
+                if (point.x > 10000 || point.y > 10000 || point.z > 10000)
+                {
+                  point.x = point.x  * 0.001;
+                  point.y = point.y  * 0.001;
+                  point.z = point.z  * 0.001;
+                  if (min_scale > 0.001)
+                    min_scale = 0.001;
+                }
+                if (point.x > 1000 || point.y > 1000 || point.z > 1000){
+                  point.x = point.x  * 0.01;
+                  point.y = point.y  * 0.01;
+                  point.z = point.z  * 0.01;
+                  if (min_scale > 0.01)
+                    min_scale = 0.01;
+                }
+                else if (point.x > 100 || point.y > 100 || point.z > 100){
+                  point.x = point.x  * 0.1;
+                  point.y = point.y  * 0.1;
+                  point.z = point.z  * 0.1;
+                  if (min_scale > 0.1)
+                    min_scale = 0.1;
+                }
+                else if (point.x > 10 || point.y > 10 || point.z > 10){
+                  point.x = point.x  * 1.0;
+                  point.y = point.y  * 1.0;
+                  point.z = point.z  * 1.0;
+                  if (min_scale > 1.0)
+                    min_scale = 1.0;
+                }
+                j++;
+              }
+              scale_factor = min_scale;
+              reader.close();
+              imf.close();
+              return 1;
+            }
+            else {
+              cout << "Error during reading file." << endl;
+
+              return 0;
+            }
+
+          }
+          catch (E57Exception& ex){
+            cout << "Error during reading file: " << ex.what() << endl;
+            return -1;
+          }
         }
 	
         inline int saveE57File(const std::string &filename, PtrXYZ &cloud, float &scale_factor, int index = 0){

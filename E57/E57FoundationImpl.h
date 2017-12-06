@@ -190,7 +190,7 @@ const char E57_LIBRARY_ID[] = "ReferenceImplementation "      \
                               "."                             \
                               QUOTED_E57_REFIMPL_REVISION_ID;
 #else
-const char E57_LIBRARY_ID[] = QUOTED_E57_REFIMPL_REVISION_ID;
+const char E57_LIBRARY_ID[] = "unknown";//QUOTED_E57_REFIMPL_REVISION_ID;
 #endif
 /// Section types:
 #define E57_BLOB_SECTION                0	//changed from 1 by SC to fit the standard
