@@ -46,13 +46,14 @@ int main (int argc, char** argv)
     int64_t scanCount = 1;
 
     for (int64_t scanIndex = 0; scanIndex < scanCount; ++scanIndex) {
-      if (e57.openE57(filenames.at(i), cloud, scale_factor, scanCount, scanIndex) == -1){
+      std::string scanname;
+      if (e57.openE57(filenames.at(i), scanname, cloud, scale_factor, scanCount, scanIndex) == -1){
         cout << "Error reading file" << endl;
         return -1;
       }
 
       std::stringstream ss;
-      ss << "Scan-" << i << "-" << scanIndex << ".pcd";
+      ss << /*"Scan-" << i << "-" << scanIndex <<*/ scanname << ".pcd";
       cout << ss.str() << endl;
       int n = 0;
 
