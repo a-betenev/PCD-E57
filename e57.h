@@ -19,7 +19,7 @@
 using namespace std;
 using namespace e57;
 
-typedef pcl::PointXYZI P_XYZ;
+typedef pcl::PointXYZRGB P_XYZ;
 typedef pcl::PointCloud<P_XYZ>::Ptr PtrXYZ;
 
 struct StructMaxMin{
@@ -83,7 +83,7 @@ class E57{
 	public:
         E57(){}
         ~E57(){}
-        inline int openE57(const std::string &filename, PtrXYZ &pointcloud, float &scale_factor, int64_t& scanCount, int64_t scanIndex = 0)
+        inline int openE57(const std::string &filename, std::string& scanname, PtrXYZ &pointcloud, float &scale_factor, int64_t& scanCount, int64_t scanIndex = 0)
         {
           try
           {
@@ -116,7 +116,9 @@ class E57{
 
             /// Get scan from "/data3D", assume its a Structure (else get exception)
             StructureNode scan(data3D.get(scanIndex));
-            std::cout << scan.elementName() << std::endl;
+
+            scanname = StringNode (scan.get("name")).value();
+            std::cout << scanname /*scan.elementName()*/ << std::endl;
 
             StructureNode pose(scan.get("pose"));
             StructureNode rotation(pose.get("rotation"));
@@ -157,6 +159,18 @@ class E57{
               destBuffers.push_back(SourceDestBuffer(imf, "cartesianX", x, points.childCount(), true));
               destBuffers.push_back(SourceDestBuffer(imf, "cartesianY", y, points.childCount(), true));
               destBuffers.push_back(SourceDestBuffer(imf, "cartesianZ", z, points.childCount(), true));
+
+              bool hasrgb = proto.isDefined("colorRed") && proto.isDefined("colorGreen") && proto.isDefined("colorBlue");
+              uint8_t *r = 0, *g = 0, *b = 0;
+              if (hasrgb) {
+                r = new uint8_t[points.childCount()];
+                g = new uint8_t[points.childCount()];
+                b = new uint8_t[points.childCount()];
+                destBuffers.push_back(SourceDestBuffer(imf, "colorRed",   r, points.childCount(), true));
+                destBuffers.push_back(SourceDestBuffer(imf, "colorGreen", g, points.childCount(), true));
+                destBuffers.push_back(SourceDestBuffer(imf, "colorBlue",  b, points.childCount(), true));
+              }
+
               //destBuffers.push_back(SourceDestBuffer(imf, "intensity", intensity, points.childCount(), true));
               /// Create a reader of the points CompressedVector, try to read first block of N points
               /// Each call to reader.read() will fill the xyz buffers until the points are exhausted.
@@ -173,6 +187,13 @@ class E57{
                 point.x = x[j];	//seems E57 is expressed in millimeters
                 point.y = y[j];	//seems E57 is expressed in millimeters
                 point.z = z[j];	//seems E57 is expressed in millimeters
+
+                if (hasrgb)
+                {
+                  point.r = r[j];
+                  point.g = g[j];
+                  point.b = b[j];
+                }
 
                 if (point.x > 10000 || point.y > 10000 || point.z > 10000)
                 {
