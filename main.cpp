@@ -57,7 +57,8 @@ int main (int argc, char** argv)
       cout << ss.str() << endl;
       int n = 0;
 
-      pcl::io::savePCDFileASCII (ss.str(), *cloud);
+//      pcl::io::savePCDFileASCII (ss.str(), *cloud);
+      pcl::io::savePCDFileBinary(ss.str(), *cloud);
 
 /*
       //demonstration of writing down from PCD to E57
