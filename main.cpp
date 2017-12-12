@@ -25,20 +25,72 @@ int loadData(int argc, char **argv, vector<string> &files)
     return 0;
 }
 
+static void savePtx (const std::string theFile, const pcl::PointCloud<pcl::PointXYZRGB>& theCloud)
+{
+  ofstream ofs (theFile);
+  if (ofs.bad())
+  {
+    cout << "Error: Cannot open file " << theFile << " for writing!" << endl;
+    return;
+  }
+
+  Eigen::Vector4f T = theCloud.sensor_origin_;
+  Eigen::Matrix3f R = theCloud.sensor_orientation_.toRotationMatrix().inverse();
+
+  ofs << theCloud.width << endl;
+  ofs << theCloud.height << endl;
+  ofs << T.x() << " " << T.y() << " " << T.z() << endl;
+  ofs << R << endl;
+  ofs << R(0,0) << " " << R(0,1) << " " << R(0,2) << " 0" << endl;
+  ofs << R(1,0) << " " << R(1,1) << " " << R(1,2) << " 0" << endl;
+  ofs << R(2,0) << " " << R(2,1) << " " << R(2,2) << " 0" << endl;
+  ofs << T.x() << " " << T.y() << " " << T.z() << " 1" << endl;
+
+  for (auto it = theCloud.begin(); it != theCloud.end(); ++it)
+  {
+    ofs << it->x << " " << it->y << " " << it->z << " 1 " << (int)it->r << " " << (int)it->g << " " << (int)it->b << endl;
+  }
+}
+
 int main (int argc, char** argv)
 {
+  // Parse arguments
   vector<string> filenames;
-  E57 e57;
-  loadData(argc, argv, filenames);
-  // Check user input
+  bool writeAscii = false;
+  bool writePtx = false;
+  bool defaultNames = false;
+  for (int i = 1; i < argc; ++i)
+  {
+    std::string arg = std::string(argv[i]);
+    if (arg == "-ascii") 
+    {
+      writeAscii = true;
+    }
+    else if (arg == "-ptx") 
+    {
+      writePtx = true;
+    }
+    else if (arg == "-defnames")
+    {
+      defaultNames = true;
+    }
+    else 
+    {
+//      cout << arg << endl;
+      filenames.push_back(arg);
+    }
+  }
   if (filenames.empty())
   {
-    cout << "Error checking files" << endl;
-    return (-1);
+    cout << "Error: no input fiels specified!" << endl;
+    cout << "Syntax: " << endl;
+    cout << argv[0] << " [-ascii] [-ptx] [-defnames] inpuf_file_1.e57 [imput_file_2.e57...]" << endl;
+    return -1;
   }
 
   PtrXYZ cloud(new pcl::PointCloud<P_XYZ>);
 
+  E57 e57;
   float scale_factor = 0;
   for (size_t i = 0; i < filenames.size(); ++i)
   {
@@ -48,17 +100,34 @@ int main (int argc, char** argv)
     for (int64_t scanIndex = 0; scanIndex < scanCount; ++scanIndex) {
       std::string scanname;
       if (e57.openE57(filenames.at(i), scanname, cloud, scale_factor, scanCount, scanIndex) == -1){
-        cout << "Error reading file" << endl;
+        cout << "Error reading file "  << filenames.at(i) << endl;
         return -1;
       }
 
       std::stringstream ss;
-      ss << /*"Scan-" << i << "-" << scanIndex <<*/ scanname << ".pcd";
+      if (defaultNames) // generate default names for scan files
+      {
+        ss << "Scan-" << i << "-" << scanIndex;
+      }
+      else { // use names of the scan for file 
+        ss << scanname;
+      }
+      ss << (writePtx ? ".ptx" : ".pcd");
       cout << ss.str() << endl;
-      int n = 0;
 
-//      pcl::io::savePCDFileASCII (ss.str(), *cloud);
-      pcl::io::savePCDFileBinary(ss.str(), *cloud);
+      // save the file
+      if (writePtx)
+      {
+        savePtx (ss.str(), *cloud);
+      }
+      else if (writeAscii)
+      {
+        pcl::io::savePCDFileASCII(ss.str(), *cloud);
+      }
+      else
+      {
+        pcl::io::savePCDFileBinary(ss.str(), *cloud);
+      }
 
 /*
       //demonstration of writing down from PCD to E57
